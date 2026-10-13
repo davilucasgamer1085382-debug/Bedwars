@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Bed Wars de Blocos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#bfe3ff;--hud:rgba(255,255,255,.85);--fg:#16202e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1220;--hud:rgba(20,28,45,.85);--fg:#eef2f8}}
+:root[data-theme="dark"]{--bg:#0b1220;--hud:rgba(20,28,45,.85);--fg:#eef2f8}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--fg);font:700 14px system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);background:var(--hud);padding:6px 12px;border-radius:10px;white-space:pre;text-align:center}
+#cross{position:fixed;left:50%;top:50%;width:12px;height:12px;margin:-6px;border:2px solid #fff;border-radius:50%;opacity:.8;box-shadow:0 0 2px #000}
+#msg{position:fixed;top:28%;width:100%;text-align:center;font-size:20px;color:#fff;text-shadow:0 2px 4px #000;pointer-events:none}
+#hint{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:100%;text-align:center;font-size:12px;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
+.ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65);color:#fff;text-align:center;overflow:auto}
+#sh{z-index:4}#ov{z-index:6}
+#mn{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#87ceeb 60%,#4caf50 60%);z-index:5;text-align:center;color:#16202e}
+#mn h1{font:800 32px system-ui;margin:0 0 4px}#mn p{margin:6px 12px 14px}
+.b{display:block;width:270px;max-width:82vw;margin:8px auto;padding:12px;border:0;border-radius:12px;font:700 15px system-ui;background:#16202e;color:#fff}
+.b.s{background:#fff;color:#16202e}
+#tc{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:none;flex-direction:column;gap:8px}
+#tc button{width:64px;height:64px;border-radius:50%;border:0;background:var(--hud);color:var(--fg);font:700 12px system-ui}
+#tc button.on{outline:3px solid #4caf50}
+</style></head><body>
+<div id="hud"></div><div id="cross"></div><div id="msg"></div><div id="hint"></div>
+<div id="ov" class="ov"><div><h2 id="ovt"></h2><button class="b" id="rs">Voltar ao menu</button></div></div>
+<div id="sh" class="ov"><div><h2>Loja</h2><div id="shl"></div><button class="b" id="shx">Fechar</button></div></div>
+<div id="mn"><div><h1>Bed Wars de Blocos</h1><p>🪙 <span id="co">0</span> moedas</p><button class="b" id="mo">Jogar offline (4 times, 3 bots)</button><button class="b s" id="ms"></button><p id="mi"></p></div></div>
+<div id="tc"><button id="bj">Pular</button><button id="bc">Agachar</button><button id="bs">Loja</button><button id="bh">Golpe</button><button id="bp">Bloco</button></div>
+<script src="three.min.js"></script>
+<script>
+const T=THREE,$=id=>document.getElementById(id);
+const touch='ontouchstart' in window||navigator.maxTouchPoints>0;
+const scene=new T.Scene();scene.background=new T.Color(0x87ceeb);scene.fog=new T.Fog(0x87ceeb,40,110);
+const cam=new T.PerspectiveCamera(70,innerWidth/innerHeight,.1,200);scene.add(cam);
+const ren=new T.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio,2));ren.setSize(innerWidth,innerHeight);
+document.body.prepend(ren.domElement);const cv=ren.domElement;
+scene.add(new T.HemisphereLight(0xffffff,0x8899aa,.95));
+const sun=new T.DirectionalLight(0xffffff,.6);sun.position.set(5,10,3);scene.add(sun);
+// texturas procedurais: n=ruído g=grama b=tijolo p=madeira o=minério
+const TX={};
+function tx(p){if(TX[p])return TX[p];const c=document.createElement('canvas');c.width=c.height=16;const g=c.getContext('2d');
+ for(let i=0;i<16;i++)for(let j=0;j<16;j++){let v=165+Math.random()*80;
+  if(p==='g'&&Math.random()<.25)v-=70;
+  if(p==='b'&&(j%4===0||(i+((j>>2)&1)*4)%8===0))v=90;
+  if(p==='p'&&(j%5===0||(i===7&&j%5===2)))v=105;
+  if(p==='o'){v=130+Math.random()*30;if(Math.random()<.2)v=255}
+  g.fillStyle=`rgb(${v|0},${v|0},${v|0})`;g.fillRect(i,j,1,1)}
+ const t=new T.CanvasTexture(c);t.magFilter=T.NearestFilter;return TX[p]=t}
+const MT={},mat=(c,p)=>MT[c+p]||(MT[c+p]=new T.MeshLambertMaterial({color:c,map:tx(p)}));
+const geo=new T.BoxGeometry(1,1,1),dirt=mat(0x8b5a2b,'n'),grass=mat(0x4caf50,'g');
+const B=new Map(),meshes=[],key=(x,y,z)=>x+','+y+','+z;
+function add(x,y,z,c,p,bd){const k=key(x,y,z);if(B.has(k))return;
+ const m=new T.Mesh(geo,p==='g'?[dirt,dirt,grass,dirt,dirt,dirt]:mat(c,p||'n'));m.position.set(x+.5,y+.5,z+.5);
+ if(bd){m.userData.bed=bd;m.scale.y=.6;m.position.y=y+.3}m.userData.c=[x,y,z];scene.add(m);B.set(k,m);meshes.push(m)}
+function del(x,y,z){const k=key(x,y,z),m=B.get(k);if(!m)return;scene.remove(m);B.delete(k);meshes.splice(meshes.indexOf(m),1)}
+// times e mapa
+const TM=[{c:0x3b82f6,x:0,z:28,dx:0,dz:1},{c:0xef4444,x:0,z:-28,dx:0,dz:-1},{c:0x22c55e,x:-28,z:0,dx:-1,dz:0},{c:0xeab308,x:28,z:0,dx:1,dz:0}];
+const NM=['Azul','Vermelho','Verde','Amarelo'],SQ=['🟦','🟥','🟩','🟨'];
+const W=(t,u,v)=>{const m=TM[t];return[m.x+m.dx*v-m.dz*u,m.z+m.dz*v+m.dx*u]};
+const aw=(t,u,v,y,c,p,b)=>{const[x,z]=W(t,u,v);add(x,y,z,c,p,b)};
+const bed=[1,1,1,1],BEDC=[],BEDW=[];
+for(let t=0;t<4;t++){
+ for(let u=-3;u<=3;u++)for(let v=-3;v<=3;v++){aw(t,u,v,0,0,'g');
+  if(Math.max(Math.abs(u),Math.abs(v))===3){const cr=Math.abs(u)===3&&Math.abs(v)===3;if(v===-3&&Math.abs(u)<=1)continue;
+   const h=cr?4:2;for(let y=1;y<=h;y++)aw(t,u,v,y,0xbfbfbf,'b');if(!cr&&((u+v)&1))aw(t,u,v,3,0xbfbfbf,'b')}}
+ const[bx,bz]=W(t,0,2);BEDC[t]=[bx,1,bz];BEDW[t]=[bx+.5,bz+.5];
+ aw(t,0,2,1,TM[t].c,'p',t+1);aw(t,-1,2,1,0xf1f1f1,'p');aw(t,1,2,1,0xf1f1f1,'p');aw(t,0,2,2,0xf1f1f1,'p')}
+for(let x=-4;x<=4;x++)for(let z=-4;z<=4;z++)add(x,0,z,0,'g');
+const pads=[[3,-3,'d',0x38e1e1,10],[-3,3,'d',0x38e1e1,10],[0,0,'e',0x2ecc71,20]].map(([x,z,k,c,i])=>{add(x,1,z,c,'o');
+ const m=new T.Mesh(new T.BoxGeometry(.4,.4,.4),mat(c,'o'));m.position.set(x+.5,2.5,z+.5);m.visible=false;scene.add(m);return{x:x+.5,z:z+.5,k,i,t:0,n:0,m}});
+// entidades
+const mk=col=>{const gr=new T.Group(),m=new T.MeshLambertMaterial({color:col}),sk=new T.MeshLambertMaterial({color:0xffcc99});
+ const b=new T.Mesh(new T.BoxGeometry(.6,.8,.3),m);b.position.y=1.1;
+ const h=new T.Mesh(new T.BoxGeometry(.45,.45,.45),sk);h.position.y=1.75;
+ const l=new T.Mesh(new T.BoxGeometry(.6,.7,.3),new T.MeshLambertMaterial({color:0x333344}));l.position.y=.35;
+ gr.add(b,h,l);scene.add(gr);return gr};
+const mkE=(t,hu)=>{const[x,z]=W(t,0,0);return{t,sp:[x+.5,1,z+.5],x:x+.5,y:1,z:z+.5,vx:0,vy:0,vz:0,kx:0,kz:0,r:.3,h:1.8,hp:10,ground:0,blocked:0,dead:0,out:0,cd:0,b:0,bt:0,st:0,ar:0,sw:0,bonus:0,stage:0,mesh:hu?null:mk(TM[t].c)}};
+const Es=[0,1,2,3].map(t=>mkE(t,t===0)),P=Es[0];
+// mão
+const SC=[0xb08850,0xd0d0d0,0x38e1e1,0x2ecc71],SW=[3,4,5,7],AR=[0,.25,.45,.6];
+scene.add(cam);const hand=new T.Group();
+const arm=new T.Mesh(new T.BoxGeometry(.14,.14,.5),new T.MeshLambertMaterial({color:0xffcc99}));arm.position.z=-.2;
+const swd=new T.Mesh(new T.BoxGeometry(.05,.5,.08),mat(SC[0],'p'));swd.position.set(0,.25,-.45);
+hand.add(arm,swd);hand.position.set(.28,-.28,-.5);hand.rotation.set(-.3,-.3,0);cam.add(hand);
+let yaw=0,pitch=0,blocks=24,over=true,mt,jr=false,lastHit=0,crouch=false,coins=0,lvl=0,gT=0,swt=0;
+const inv={f:0,d:0,e:0};
+try{coins=+localStorage.getItem('bw_c')||0;lvl=+localStorage.getItem('bw_l')||0}catch(e){}
+const save=()=>{try{localStorage.setItem('bw_c',coins);localStorage.setItem('bw_l',lvl)}catch(e){}};
+function mnu(){$('co').textContent=coins;$('ms').textContent=lvl>=5?'Loja: nível máximo':`Loja: +8 blocos iniciais (40 🪙) · nível ${lvl}/5`}
+function hit(e){const r=e.r;for(let x=Math.floor(e.x-r);x<=Math.floor(e.x+r);x++)for(let y=Math.floor(e.y);y<=Math.floor(e.y+e.h-.01);y++)for(let z=Math.floor(e.z-r);z<=Math.floor(e.z+r);z++)if(B.has(key(x,y,z)))return true;return false}
+function phys(e,dt){e.vy=Math.max(e.vy-25*dt,-40);e.blocked=0;
+ e.x+=e.vx*dt;if(hit(e)){e.x-=e.vx*dt;e.blocked=1}
+ e.z+=e.vz*dt;if(hit(e)){e.z-=e.vz*dt;e.blocked=1}
+ e.y+=e.vy*dt;e.ground=0;
+ if(hit(e)){if(e.vy<0){e.y=Math.floor(e.y)+1;e.ground=1}else e.y-=e.vy*dt;e.vy=0}
+ e.kx*=Math.pow(.02,dt);e.kz*=Math.pow(.02,dt)}
+// agachar: só precisa de apoio sob qualquer canto do corpo, então dá para andar na ponta e construir
+const sup=(e,x,z)=>{const y=Math.floor(e.y+.01)-1;for(const a of[-e.r,e.r])for(const b of[-e.r,e.r])if(B.has(key(Math.floor(x+a),y,Math.floor(z+b))))return 1;return 0};
+const sc=on=>{if(on===crouch)return;if(on)P.h=1.5;else{P.h=1.8;if(hit(P)){P.h=1.5;return}}crouch=on;$('bc').classList.toggle('on',on)};
+function msg(t){$('msg').textContent=t;clearTimeout(mt);mt=setTimeout(()=>$('msg').textContent='',2200)}
+function end(w){if(over)return;over=true;if(w){coins+=50;save()}$('ovt').textContent=w?'🏆 Você venceu! +50 🪙':'💀 Você perdeu';$('ov').style.display='flex';document.exitPointerLock&&document.exitPointerLock()}
+function chk(){if(P.out)end(false);else if(Es.every(o=>o===P||o.out))end(true)}
+function destroyBed(t,by){if(!bed[t])return;bed[t]=0;del(...BEDC[t]);
+ if(by===P){coins+=25;save()}msg(t?`Cama ${NM[t]} destruída!`+(by===P?' +25 🪙':''):'Sua cama foi destruída!');
+ for(const o of Es)if(o.t===t&&o.dead>0)o.out=1;chk()}
+function die(e,by){e.hp=0;e.dead=3;if(e.mesh)e.mesh.visible=false;if(!bed[e.t])e.out=1;else if(e===P)msg('Você morreu! Renascendo...');
+ if(by===P&&e!==P){coins+=10;save()}chk()}
+function dmg(e,a,kx,kz,by){if(e.dead>0||e.out)return;e.hp-=a*(1-AR[e.ar]);e.kx=kx;e.kz=kz;e.vy=5;if(e.hp<=0)die(e,by)}
+function respawn(e){e.x=e.sp[0];e.y=e.sp[1];e.z=e.sp[2];e.vx=e.vy=e.vz=e.kx=e.kz=0;e.hp=10;e.dead=0;if(e.mesh)e.mesh.visible=true;else{yaw=0;pitch=0}}
+const ray=new T.Raycaster();
+function act(place){if(P.dead>0||over)return;cam.updateMatrixWorld();
+ const d=new T.Vector3();cam.getWorldDirection(d);
+ if(!place){swt=1;if(performance.now()-lastHit>350){let bo=null,bd=3.6;
+  for(const o of Es){if(o===P||o.dead>0||o.out)continue;const v=new T.Vector3(o.x-P.x,o.y+1-(P.y+1.6),o.z-P.z),L=v.length();if(L<bd&&v.normalize().dot(d)>.8){bd=L;bo=o}}
+  if(bo){lastHit=performance.now();const l=Math.hypot(d.x,d.z)||1;dmg(bo,SW[P.sw],d.x/l*8,d.z/l*8,P);return}}}
+ ray.setFromCamera(new T.Vector2(0,0),cam);ray.far=5;
+ const h=ray.intersectObjects(meshes,false)[0];if(!h)return;
+ const n=h.face.normal,p=h.point;
+ if(!place){const u=h.object.userData;if(u.bed){if(u.bed===1)msg('Não dá pra quebrar a sua própria cama!');else destroyBed(u.bed-1,P)}else del(...u.c)}
+ else{if(blocks<1)return msg('Sem blocos! Compre na loja (B).');
+  const x=Math.floor(p.x+n.x*.01),y=Math.floor(p.y+n.y*.01),z=Math.floor(p.z+n.z*.01);
+  if(B.has(key(x,y,z)))return;add(x,y,z,TM[0].c,'p');if(hit(P))del(x,y,z);else blocks--}}
+function botAI(e,dt){
+ if(e.out)return;
+ if(e.dead>0){e.dead-=dt;if(e.dead<=0){if(bed[e.t])respawn(e);else{e.out=1;chk()}}return}
+ let ne=null,nd=999;for(const o of Es)if(o!==e&&!o.out&&o.dead<=0&&o.t!==e.t){const d=Math.hypot(o.x-e.x,o.z-e.z);if(d<nd){nd=d;ne=o}}
+ const chase=ne&&nd<7&&Math.abs(ne.y-e.y)<3;let tx,tz,tb=-1;
+ if(chase){tx=ne.x;tz=ne.z}
+ else if(e.stage<1){tx=.5;tz=.5;if(Math.hypot(e.x-.5,e.z-.5)<4)e.stage=1}
+ else{let bd=999;BEDW.forEach((p,t)=>{if(t!==e.t&&bed[t]){const d=Math.hypot(p[0]-e.x,p[1]-e.z);if(d<bd){bd=d;tb=t}}});
+  if(tb>=0){tx=BEDW[tb][0];tz=BEDW[tb][1]}else if(ne){tx=ne.x;tz=ne.z}else return}
+ const dx=tx-e.x,dz=tz-e.z,d=Math.hypot(dx,dz)||1;let ux=0,uz=0,sp=3.2;e.cd-=dt;
+ if(chase&&d<2.2){sp=0;if(e.cd<=0){e.cd=1;dmg(ne,2+e.bonus+Math.floor(gT/80),dx/d*6,dz/d*6,e)}}
+ else if(tb>=0&&d<2){sp=0;e.bt+=dt;if(e.bt>1.5){e.bt=0;destroyBed(tb,e)}}
+ else if(chase){ux=dx/d;uz=dz/d}
+ else if(Math.abs(dx)>.5&&Math.abs(dx)>=Math.abs(dz)-.5)ux=Math.sign(dx);else uz=Math.sign(dz);
+ if(sp&&(ux||uz)){const ax=Math.floor(e.x+ux*.8),az=Math.floor(e.z+uz*.8),cy=Math.floor(e.y+.01)-1;
+  if(e.ground&&!B.has(key(ax,cy,az))){sp=0;e.b+=dt;if(e.b>.4){add(ax,cy,az,TM[e.t].c,'p');e.b=0}}}
+ e.vx=ux*sp+e.kx;e.vz=uz*sp+e.kz;phys(e,dt);
+ if(e.blocked){e.st+=dt;if(e.ground)e.vy=8}else e.st=0;
+ if(e.st>1.2){e.st=0;for(const y of[Math.floor(e.y),Math.floor(e.y)+1]){const x=Math.floor(e.x+ux*.6),z=Math.floor(e.z+uz*.6),m=B.get(key(x,y,z));if(m&&!m.userData.bed)del(x,y,z)}}
+ if(e.y<-12)die(e,null);
+ e.mesh.position.set(e.x,e.y,e.z);if(ux||uz)e.mesh.rotation.y=Math.atan2(ux,uz)}
+// loja
+const ic={f:'🔩',d:'💎',e:'🟢'};
+function up(k,v){if(P[k]>=v)return 0;P[k]=v;if(k==='sw')swd.material=mat(SC[v],'p')}
+const S=[['🧱 Blocos ×16',{f:8},()=>{blocks+=16}],['⚔️ Espada de ferro',{f:20},()=>up('sw',1)],['⚔️ Espada de diamante',{d:4},()=>up('sw',2)],['⚔️ Espada de esmeralda',{e:4},()=>up('sw',3)],['🛡️ Armadura de ferro',{f:30},()=>up('ar',1)],['🛡️ Armadura de diamante',{d:6},()=>up('ar',2)],['🛡️ Armadura de esmeralda',{e:6},()=>up('ar',3)]];
+S.forEach(([l,c,f])=>{const b=document.createElement('button');b.className='b s';b.textContent=l+' — '+Object.entries(c).map(([k,v])=>v+ic[k]).join(' ');
+ b.onclick=()=>{if(Object.entries(c).some(([k,v])=>inv[k]<v))return msg('Recursos insuficientes');if(f()===0)return msg('Você já tem algo melhor');for(const k in c)inv[k]-=c[k];msg('Comprado!')};$('shl').appendChild(b)});
+const shopOn=()=>$('sh').style.display==='flex';
+function shop(on){if(over)return;$('sh').style.display=on?'flex':'none';if(on)document.exitPointerLock&&document.exitPointerLock()}
+$('shx').onclick=()=>shop(false);
+const K={};let jx=0,jz=0;
+addEventListener('keydown',e=>{K[e.code]=1;if(e.code==='Space')jr=true;if(e.code==='ShiftLeft'||e.code==='KeyC')sc(true);if(e.code==='KeyB')shop(!shopOn())});
+addEventListener('keyup',e=>{K[e.code]=0;if(e.code==='ShiftLeft'||e.code==='KeyC')sc(false)});
+function update(dt){gT+=dt;inv.f=Math.min(inv.f+dt*1.5,300);
+ pads.forEach(p=>{p.t+=dt;if(p.t>p.i){p.t=0;p.n=Math.min(p.n+1,4)}p.m.visible=p.n>0;p.m.rotation.y+=dt*2});
+ for(const e of Es){if(e.out||e.dead>0)continue;for(const p of pads)if(p.n&&Math.hypot(e.x-p.x,e.z-p.z)<1.6&&Math.abs(e.y-1)<3){if(e===P)inv[p.k]+=p.n;else e.bonus+=p.n*(p.k==='d'?.4:.8);p.n=0}}
+ if(P.dead>0){P.dead-=dt;if(P.dead<=0&&!over&&!P.out)respawn(P)}
+ else if(!P.out){let mx=(K.KeyD?1:0)-(K.KeyA?1:0)+jx,mz=(K.KeyW?1:0)-(K.KeyS?1:0)+jz;const l=Math.hypot(mx,mz);if(l>1){mx/=l;mz/=l}
+  const sy=Math.sin(yaw),cy=Math.cos(yaw),sp=crouch?2.6:5;
+  P.vx=(-sy*mz+cy*mx)*sp+P.kx;P.vz=(-cy*mz-sy*mx)*sp+P.kz;
+  if(crouch&&P.ground){if(!sup(P,P.x+P.vx*dt,P.z))P.vx=0;if(!sup(P,P.x,P.z+P.vz*dt))P.vz=0}
+  if(jr&&P.ground)P.vy=8;phys(P,dt);if(P.y<-12)die(P,null)}
+ jr=false;for(const e of Es)if(e!==P)botAI(e,dt);
+ if(swt>0){swt-=dt*4;hand.rotation.x=-.3-Math.sin(Math.max(swt,0)*Math.PI)*1.1}
+ cam.position.set(P.x,P.y+(crouch?1.3:1.6),P.z);cam.rotation.set(pitch,yaw,0,'YXZ');
+ $('hud').textContent=`❤ ${Math.max(P.hp|0,0)}  🧱${blocks|0}  🔩${inv.f|0}  💎${inv.d}  🟢${inv.e}  🪙${coins}\n`+bed.map((b,t)=>b?SQ[t]:'❌').join(' ')}
+let last=performance.now();
+(function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;if(!over)update(dt);ren.render(scene,cam)})(last);
+addEventListener('resize',()=>{ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+$('rs').onclick=()=>location.reload();
+// controles: teclado e mouse (sempre ativos) + toque (quando houver)
+const lim=v=>Math.max(-1,Math.min(1,v)),clp=v=>Math.max(-1.4,Math.min(1.4,v));
+cv.addEventListener('click',()=>{if(!over&&!shopOn()&&!touch&&document.pointerLockElement!==cv)cv.requestPointerLock()});
+document.addEventListener('pointerlockchange',()=>{if(!touch)$('hint').style.display=document.pointerLockElement===cv?'none':'block'});
+addEventListener('mousemove',e=>{if(document.pointerLockElement!==cv)return;yaw-=e.movementX*.0025;pitch=clp(pitch-e.movementY*.0025)});
+addEventListener('mousedown',e=>{if(document.pointerLockElement===cv)act(e.button===2)});
+addEventListener('contextmenu',e=>e.preventDefault());
+$('hint').textContent=touch?'Esquerda: andar · Direita: olhar':'Clique p/ jogar · WASD · Espaço · Shift agacha · B loja · Esq golpe/quebra · Dir bloco';
+if(touch){$('tc').style.display='flex';let js=null,lk=null;
+ const bind=(id,f)=>$(id).addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();f()});
+ bind('bj',()=>jr=true);bind('bc',()=>sc(!crouch));bind('bs',()=>shop(!shopOn()));bind('bh',()=>act(false));bind('bp',()=>act(true));
+ addEventListener('touchstart',e=>{if(e.target.tagName==='BUTTON'||shopOn())return;e.preventDefault();
+  for(const t of e.changedTouches){const o={id:t.identifier,x:t.clientX,y:t.clientY};if(t.clientX<innerWidth/2){if(!js)js=o}else if(!lk)lk=o}},{passive:false});
+ addEventListener('touchmove',e=>{if(shopOn())return;e.preventDefault();for(const t of e.changedTouches){
+  if(js&&t.identifier===js.id){jx=lim((t.clientX-js.x)/40);jz=lim(-(t.clientY-js.y)/40)}
+  else if(lk&&t.identifier===lk.id){yaw-=(t.clientX-lk.x)*.006;pitch=clp(pitch-(t.clientY-lk.y)*.006);lk.x=t.clientX;lk.y=t.clientY}}},{passive:false});
+ const en=e=>{for(const t of e.changedTouches){if(js&&t.identifier===js.id){js=null;jx=jz=0}if(lk&&t.identifier===lk.id)lk=null}};
+ addEventListener('touchend',en);addEventListener('touchcancel',en)}
+mnu();
+$('mo').onclick=()=>{blocks=24+8*lvl;over=false;$('mn').style.display='none';if(!touch)cv.requestPointerLock();msg('Destrua as camas dos outros times! Colete 💎 e 🟢 no centro.')};
+$('ms').onclick=()=>{if(lvl>=5)return;if(coins<40){$('mi').textContent='Moedas insuficientes. Abate +10, cama +25, vitória +50.';return}coins-=40;lvl++;save();mnu();$('mi').textContent='Comprado!'};
+</script></body></html>
